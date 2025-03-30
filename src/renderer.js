@@ -68,13 +68,48 @@ function populateVaultSelector() {
 
   // Add vaults to dropdown
   if (obsidianVaults.length > 0) {
+    // Add section title for automatic vaults
+    let hasConfigVaults = false;
+    let hasManualVaults = false;
+
+    // First, check if we have both types
     for (const vault of obsidianVaults) {
+      if (vault.id.startsWith("manual-")) {
+        hasManualVaults = true;
+      } else {
+        hasConfigVaults = true;
+      }
+    }
+
+    // If we have both types, add group labels
+    let currentGroup = "";
+
+    for (const vault of obsidianVaults) {
+      // Check if we need to add a group header
+      if (hasConfigVaults && hasManualVaults) {
+        const isManual = vault.id.startsWith("manual-");
+        const newGroup = isManual ? "discovered" : "config";
+
+        if (newGroup !== currentGroup) {
+          currentGroup = newGroup;
+          const groupOption = document.createElement("option");
+          groupOption.disabled = true;
+          groupOption.textContent = isManual
+            ? "--- Discovered Vaults ---"
+            : "--- Configured Vaults ---";
+          vaultSelector.appendChild(groupOption);
+        }
+      }
+
       const option = document.createElement("option");
       option.value = vault.path;
       option.textContent = vault.name;
       option.title = vault.path;
       vaultSelector.appendChild(option);
     }
+
+    // Enable the selector
+    vaultSelector.disabled = false;
   } else {
     // No vaults found, add a message
     const option = document.createElement("option");
@@ -82,6 +117,7 @@ function populateVaultSelector() {
     option.textContent = "No Obsidian vaults found";
     option.disabled = true;
     vaultSelector.appendChild(option);
+    vaultSelector.disabled = true;
   }
 }
 

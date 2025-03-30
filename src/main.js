@@ -10,21 +10,65 @@ let mainWindow;
 
 // Get Obsidian config file path based on platform
 function getObsidianConfigPath() {
+  const possiblePaths = [];
+
   switch (process.platform) {
-    case "win32":
-      return path.join(process.env.APPDATA, "obsidian", "obsidian.json");
-    case "darwin":
-      return path.join(
-        os.homedir(),
-        "Library",
-        "Application Support",
-        "obsidian",
-        "obsidian.json"
+    case "win32": {
+      // Standard installation path
+      possiblePaths.push(
+        path.join(process.env.APPDATA, "obsidian", "obsidian.json")
       );
+
+      // Portable installation - check Data directory for portable apps
+      if (process.env.PORTABLE_EXECUTABLE_DIR) {
+        possiblePaths.push(
+          path.join(
+            process.env.PORTABLE_EXECUTABLE_DIR,
+            "Data",
+            "obsidian",
+            "obsidian.json"
+          )
+        );
+      }
+
+      // Add current directory + Data folder for portable installations
+      possiblePaths.push(
+        path.join(app.getAppPath(), "..", "Data", "obsidian", "obsidian.json")
+      );
+      possiblePaths.push(
+        path.join(process.cwd(), "Data", "obsidian", "obsidian.json")
+      );
+      break;
+    }
+    case "darwin": {
+      // Standard Mac installation paths
+      possiblePaths.push(
+        path.join(
+          os.homedir(),
+          "Library",
+          "Application Support",
+          "obsidian",
+          "obsidian.json"
+        )
+      );
+
+      // Add current directory + Data folder for portable installations
+      possiblePaths.push(
+        path.join(app.getAppPath(), "..", "Data", "obsidian", "obsidian.json")
+      );
+      possiblePaths.push(
+        path.join(process.cwd(), "Data", "obsidian", "obsidian.json")
+      );
+      break;
+    }
     case "linux": {
-      // Try different locations based on how Obsidian was installed
-      const possibleLocations = [
-        path.join(os.homedir(), ".config", "obsidian", "obsidian.json"),
+      // Standard Linux installation paths
+      possiblePaths.push(
+        path.join(os.homedir(), ".config", "obsidian", "obsidian.json")
+      );
+
+      // Flatpak installation
+      possiblePaths.push(
         path.join(
           os.homedir(),
           ".var",
@@ -33,19 +77,51 @@ function getObsidianConfigPath() {
           "config",
           "obsidian",
           "obsidian.json"
-        ),
-      ];
+        )
+      );
 
-      for (const location of possibleLocations) {
-        if (fs.existsSync(location)) {
-          return location;
-        }
-      }
-      return path.join(os.homedir(), ".config", "obsidian", "obsidian.json"); // Default fallback
+      // Snap installation
+      possiblePaths.push(
+        path.join(
+          os.homedir(),
+          "snap",
+          "obsidian",
+          "current",
+          ".config",
+          "obsidian",
+          "obsidian.json"
+        )
+      );
+
+      // AppImage or portable installation
+      possiblePaths.push(
+        path.join(app.getAppPath(), "..", "Data", "obsidian", "obsidian.json")
+      );
+      possiblePaths.push(
+        path.join(process.cwd(), "Data", "obsidian", "obsidian.json")
+      );
+      break;
     }
     default:
       return null;
   }
+
+  // Check each path and return the first one that exists
+  for (const configPath of possiblePaths) {
+    try {
+      if (fs.existsSync(configPath)) {
+        console.log("Found Obsidian config at:", configPath);
+        return configPath;
+      }
+    } catch (error) {
+      // Ignore permission errors or other issues
+      console.log(`Error checking path ${configPath}: ${error.message}`);
+    }
+  }
+
+  // If no config file is found, return the default path for the platform
+  console.log("No Obsidian config found, using default path");
+  return possiblePaths[0];
 }
 
 // Find Obsidian vaults from config file
@@ -54,7 +130,7 @@ function findObsidianVaults() {
     const configPath = getObsidianConfigPath();
     if (!configPath || !fs.existsSync(configPath)) {
       console.log("Obsidian config file not found at:", configPath);
-      return [];
+      return searchForVaultsByDirectory();
     }
 
     const configData = fs.readFileSync(configPath, "utf8");
@@ -72,7 +148,7 @@ function findObsidianVaults() {
           vaultPath = decodeURI(vaultPath.replace(/^file:\/\//, ""));
         }
 
-        // Check if vault path is accessible
+        // Validate the vault path exists
         let isValid = false;
         let isAccessible = false;
 
@@ -109,12 +185,82 @@ function findObsidianVaults() {
       );
     }
 
-    console.log(`Found ${vaultList.length} Obsidian vaults`);
+    console.log(`Found ${vaultList.length} Obsidian vaults from config`);
+
+    // If no vaults found in config, try to search common locations
+    if (vaultList.length === 0) {
+      return searchForVaultsByDirectory();
+    }
+
     return vaultList;
   } catch (error) {
-    console.error("Error finding Obsidian vaults:", error);
-    return [];
+    console.error("Error finding Obsidian vaults from config:", error);
+    return searchForVaultsByDirectory();
   }
+}
+
+// Search for potential Obsidian vaults by checking common directories
+function searchForVaultsByDirectory() {
+  const potentialVaults = [];
+  const commonDirs = [];
+
+  // Add common locations where vaults might be stored
+  commonDirs.push(path.join(os.homedir(), "Documents"));
+  commonDirs.push(path.join(os.homedir(), "Dropbox"));
+  commonDirs.push(path.join(os.homedir(), "Google Drive"));
+  commonDirs.push(path.join(os.homedir(), "OneDrive"));
+  commonDirs.push(path.join(os.homedir(), "iCloud Drive"));
+  commonDirs.push(path.join(os.homedir(), "Obsidian Vaults"));
+
+  // Check each directory for .obsidian folders (indicating an Obsidian vault)
+  for (const dir of commonDirs) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+
+      // Check if this directory itself is a vault
+      if (fs.existsSync(path.join(dir, ".obsidian"))) {
+        potentialVaults.push({
+          id: `manual-${potentialVaults.length}`,
+          name: path.basename(dir),
+          path: dir,
+          isValid: true,
+          isAccessible: true,
+        });
+        continue;
+      }
+
+      // Check subdirectories (but only one level deep to avoid too much scanning)
+      const items = fs.readdirSync(dir);
+      for (const item of items) {
+        const itemPath = path.join(dir, item);
+
+        try {
+          const stats = fs.statSync(itemPath);
+          if (
+            stats.isDirectory() &&
+            fs.existsSync(path.join(itemPath, ".obsidian"))
+          ) {
+            potentialVaults.push({
+              id: `manual-${potentialVaults.length}`,
+              name: item,
+              path: itemPath,
+              isValid: true,
+              isAccessible: true,
+            });
+          }
+        } catch (err) {
+          // Skip inaccessible directories
+        }
+      }
+    } catch (err) {
+      // Skip inaccessible directories
+    }
+  }
+
+  console.log(
+    `Found ${potentialVaults.length} potential Obsidian vaults by directory scanning`
+  );
+  return potentialVaults;
 }
 
 function createWindow() {
@@ -153,12 +299,12 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  app.on("activate", function () {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on("window-all-closed", function () {
+app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 

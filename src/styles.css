@@ -247,3 +247,10 @@ button:active {
 .hidden {
   display: none;
 }
+
+.vault-selector option[disabled] {
+  color: var(--accent-color);
+  font-weight: bold;
+  font-size: 12px;
+  background-color: var(--hover-color);
+}
