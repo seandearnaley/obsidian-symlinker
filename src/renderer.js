@@ -12,6 +12,7 @@ const createSymlinksBtn = document.getElementById("create-symlinks-btn");
 const fileListEl = document.getElementById("file-list");
 const resultsEl = document.getElementById("results");
 const recentLinksEl = document.getElementById("recent-links");
+const clearRecentBtn = document.getElementById("clear-recent-btn");
 
 // App State
 let vaultPath = "";
@@ -260,9 +261,9 @@ function renderFileList() {
     editBtn.title = "Customize filename in vault";
     editBtn.addEventListener("click", () => {
       // Turn off editing for all files
-      selectedFiles.forEach((file) => {
+      for (const file of selectedFiles) {
         file.editing = false;
-      });
+      }
 
       // Toggle editing for this file only
       fileObj.editing = true;
@@ -526,6 +527,14 @@ function renderRecentLinks(recentLinks) {
 function updateCreateButtonState() {
   createSymlinksBtn.disabled = !vaultPath || selectedFiles.length === 0;
 }
+
+// Clear recent links
+clearRecentBtn.addEventListener("click", async () => {
+  if (confirm("Are you sure you want to clear all recent symlinks?")) {
+    await ipcRenderer.invoke("clear-recent-links");
+    loadRecentLinks();
+  }
+});
 
 // Initialize the app
 init();

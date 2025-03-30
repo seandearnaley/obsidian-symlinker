@@ -265,9 +265,9 @@ function searchForVaultsByDirectory() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 600,
-    minWidth: 800,
+    width: 800,
+    height: 550,
+    minWidth: 700,
     minHeight: 500,
     webPreferences: {
       nodeIntegration: true,
@@ -477,4 +477,10 @@ ipcMain.handle("save-recent-link", (event, linkInfo) => {
   const updatedLinks = [linkInfo, ...recentLinks.slice(0, 9)]; // Keep only the 10 most recent
   store.set("recentLinks", updatedLinks);
   return updatedLinks;
+});
+
+// Clear recent symlinks
+ipcMain.handle("clear-recent-links", () => {
+  store.set("recentLinks", []);
+  return [];
 });
