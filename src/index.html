@@ -11,58 +11,70 @@
       <div class="title">Obsidian Symlinker</div>
     </div>
 
-    <div class="container">
-      <div class="section vault-section">
-        <h2>Obsidian Vault</h2>
-        <div class="input-group">
-          <select
-            id="vault-selector"
-            class="vault-selector"
-            aria-label="Select Obsidian vault"
-          >
-            <option value="" disabled selected>Select a vault</option>
-          </select>
-          <button id="refresh-vaults-btn" title="Refresh vault list">↻</button>
-          <button id="choose-vault-btn">Custom Vault</button>
+    <div class="app-container">
+      <!-- Left Column: Input -->
+      <div class="column left-column">
+        <div class="section vault-section">
+          <h2>Obsidian Vault</h2>
+          <div class="input-group">
+            <select
+              id="vault-selector"
+              class="vault-selector"
+              aria-label="Select Obsidian vault"
+            >
+              <option value="" disabled selected>Select a vault</option>
+            </select>
+            <button id="refresh-vaults-btn" title="Refresh vault list">
+              ↻
+            </button>
+            <button id="choose-vault-btn">Custom Vault</button>
+          </div>
+          <div class="input-group vault-path-group">
+            <input
+              type="text"
+              id="vault-path"
+              readonly
+              placeholder="Vault path"
+            />
+          </div>
         </div>
-        <div class="input-group vault-path-group">
-          <input
-            type="text"
-            id="vault-path"
-            readonly
-            placeholder="Vault path"
-          />
+
+        <div class="section">
+          <h2>Markdown Files</h2>
+          <div class="input-group">
+            <input
+              type="text"
+              id="markdown-files"
+              readonly
+              placeholder="Select markdown files to symlink"
+            />
+            <button id="choose-markdown-btn">Choose Files</button>
+          </div>
+          <div class="file-list-info">
+            Select files to symlink. You can customize the name that will appear
+            in your Obsidian vault by clicking the edit icon.
+          </div>
+          <div id="file-list" class="file-list"></div>
+        </div>
+
+        <div class="section">
+          <button id="create-symlinks-btn" class="primary-btn" disabled>
+            Create Symlinks
+          </button>
         </div>
       </div>
 
-      <div class="section">
-        <h2>Markdown Files</h2>
-        <div class="input-group">
-          <input
-            type="text"
-            id="markdown-files"
-            readonly
-            placeholder="Select markdown files to symlink"
-          />
-          <button id="choose-markdown-btn">Choose Files</button>
+      <!-- Right Column: Results and Recent -->
+      <div class="column right-column">
+        <div class="section results-section">
+          <h2>Results</h2>
+          <div id="results" class="results"></div>
         </div>
-        <div id="file-list" class="file-list"></div>
-      </div>
 
-      <div class="section">
-        <button id="create-symlinks-btn" class="primary-btn" disabled>
-          Create Symlinks
-        </button>
-      </div>
-
-      <div class="section results-section">
-        <h2>Results</h2>
-        <div id="results" class="results"></div>
-      </div>
-
-      <div class="section recent-section">
-        <h2>Recent Symlinks</h2>
-        <div id="recent-links" class="recent-links"></div>
+        <div class="section recent-section">
+          <h2>Recent Symlinks</h2>
+          <div id="recent-links" class="recent-links"></div>
+        </div>
       </div>
     </div>
 

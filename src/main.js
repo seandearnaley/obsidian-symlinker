@@ -265,8 +265,10 @@ function searchForVaultsByDirectory() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 800,
+    width: 1000,
     height: 600,
+    minWidth: 800,
+    minHeight: 500,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -357,6 +359,15 @@ ipcMain.handle("load-vault-path", (event, path) => {
   return store.get("vaultPath");
 });
 
+// Save vault path
+ipcMain.handle("save-vault-path", (event, path) => {
+  if (path) {
+    store.set("vaultPath", path);
+    return true;
+  }
+  return false;
+});
+
 // Choose markdown file to symlink
 ipcMain.handle("choose-markdown", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -373,21 +384,50 @@ ipcMain.handle("choose-markdown", async () => {
 
 // Create symlink
 ipcMain.handle("create-symlink", async (event, { targetFiles, vaultPath }) => {
+  console.log("\n==== CREATE SYMLINK REQUEST ====");
+  console.log(
+    "Raw data received:",
+    JSON.stringify({ targetFiles, vaultPath }, null, 2)
+  );
+
   const results = [];
 
-  for (const filePath of targetFiles) {
+  for (const fileObj of targetFiles) {
     try {
-      const fileName = path.basename(filePath);
-      const symlinkPath = path.join(vaultPath, fileName);
+      console.log(
+        "\nProcessing file object:",
+        JSON.stringify(fileObj, null, 2)
+      );
+
+      const filePath = fileObj.filePath;
+      const originalFileName = path.basename(filePath);
+
+      // Use custom name if provided, otherwise use original filename
+      const targetFileName = fileObj.customName || originalFileName;
+
+      console.log("Source file path:", filePath);
+      console.log("Original filename:", originalFileName);
+      console.log("Custom name provided:", fileObj.customName || "NONE");
+      console.log("Target filename:", targetFileName);
+
+      const symlinkPath = path.join(vaultPath, targetFileName);
+      console.log("Full symlink path:", symlinkPath);
 
       // Check if file already exists in the vault
       if (fs.existsSync(symlinkPath)) {
-        results.push({
-          success: false,
-          file: fileName,
-          error: "File already exists in vault",
-        });
-        continue;
+        console.log("File already exists, attempting to remove:", symlinkPath);
+        try {
+          fs.unlinkSync(symlinkPath);
+          console.log("Successfully removed existing file");
+        } catch (removalError) {
+          console.error("Error removing existing file:", removalError);
+          results.push({
+            success: false,
+            file: targetFileName,
+            error: `Could not remove existing file: ${removalError.message}`,
+          });
+          continue;
+        }
       }
 
       // Create symlink
@@ -398,21 +438,31 @@ ipcMain.handle("create-symlink", async (event, { targetFiles, vaultPath }) => {
         fs.symlinkSync(filePath, symlinkPath);
       }
 
+      console.log(
+        "Successfully created symlink from",
+        filePath,
+        "to",
+        symlinkPath
+      );
       results.push({
         success: true,
-        file: fileName,
+        file: targetFileName,
         targetPath: filePath,
         symlinkPath: symlinkPath,
       });
     } catch (error) {
+      console.error("Error creating symlink:", error);
+      const fileName = fileObj.customName || path.basename(fileObj.filePath);
       results.push({
         success: false,
-        file: path.basename(filePath),
+        file: fileName,
         error: error.message,
       });
     }
   }
 
+  console.log("\nReturning results:", JSON.stringify(results, null, 2));
+  console.log("==== END CREATE SYMLINK ====\n");
   return results;
 });
 
