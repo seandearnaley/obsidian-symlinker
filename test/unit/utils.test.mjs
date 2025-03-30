@@ -1,121 +1,134 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import os from "node:os";
 import path from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Create mock functions that we'll use directly
-const mockExistsSync = vi.fn();
-const mockStatSync = vi.fn();
-const mockReaddirSync = vi.fn();
-const mockAccessSync = vi.fn();
-const mockConstants = { R_OK: 4 };
+// Mock fs module
+vi.mock("node:fs", () => {
+	return {
+		default: {
+			existsSync: vi.fn(),
+			statSync: vi.fn(),
+			readdirSync: vi.fn(),
+			accessSync: vi.fn(),
+			constants: { R_OK: 4 },
+		},
+		existsSync: vi.fn(),
+		statSync: vi.fn(),
+		readdirSync: vi.fn(),
+		accessSync: vi.fn(),
+		constants: { R_OK: 4 },
+	};
+});
 
-// Create a utils module for tests
-const utils = {
-  validatePath(filePath) {
-    let isValid = false;
-    let isAccessible = false;
-
-    try {
-      isValid = mockExistsSync(filePath);
-      if (isValid) {
-        // Try to read directory to verify access permissions
-        if (mockStatSync(filePath).isDirectory()) {
-          mockReaddirSync(filePath);
-        } else {
-          // Try to read file
-          mockAccessSync(filePath, mockConstants.R_OK);
-        }
-        isAccessible = true;
-      }
-    } catch (err) {
-      console.log(
-        `Path ${filePath} exists but may require elevated privileges:`,
-        err.message
-      );
-      isAccessible = false;
-    }
-
-    return { isValid, isAccessible };
-  },
-
-  normalizePath(path) {
-    if (path.startsWith("file://")) {
-      return decodeURI(path.replace(/^file:\/\//, ""));
-    }
-    return path;
-  },
-};
+import fs from "node:fs";
+// Import utils after mocking dependencies
+import { normalizePath, validatePath } from "../../src/utils.js";
 
 describe("Utils Module", () => {
-  beforeEach(() => {
-    // Reset all mocks before each test
-    mockExistsSync.mockReset();
-    mockStatSync.mockReset();
-    mockReaddirSync.mockReset();
-    mockAccessSync.mockReset();
-  });
+	beforeEach(() => {
+		// Reset all mocks before each test
+		vi.resetAllMocks();
+	});
 
-  describe("normalizePath", () => {
-    it("should keep normal paths unchanged", () => {
-      const testPath = "/Users/test/Documents/vault";
-      expect(utils.normalizePath(testPath)).toBe(testPath);
-    });
+	describe("normalizePath", () => {
+		it("should keep normal paths unchanged", () => {
+			const testPath = "/Users/test/Documents/vault";
+			expect(normalizePath(testPath)).toBe(testPath);
+		});
 
-    it("should normalize file:// URLs", () => {
-      const testPath = "file:///Users/test/Documents/vault";
-      expect(utils.normalizePath(testPath)).toBe("/Users/test/Documents/vault");
-    });
+		it("should normalize file:// URLs", () => {
+			const testPath = "file:///Users/test/Documents/vault";
+			expect(normalizePath(testPath)).toBe("/Users/test/Documents/vault");
+		});
 
-    it("should decode URI components in file paths", () => {
-      const testPath = "file:///Users/test/Documents/My%20Vault";
-      expect(utils.normalizePath(testPath)).toBe(
-        "/Users/test/Documents/My Vault"
-      );
-    });
-  });
+		it("should decode URI components in file paths", () => {
+			const testPath = "file:///Users/test/Documents/My%20Vault";
+			expect(normalizePath(testPath)).toBe("/Users/test/Documents/My Vault");
+		});
 
-  describe("validatePath", () => {
-    it("should return isValid=false if path does not exist", () => {
-      mockExistsSync.mockReturnValue(false);
+		it("should handle complex URI encoding", () => {
+			// The actual encode/decode behavior is handled by the browser's decodeURI function
+			// We should test simple cases that we know will work
+			const testPath = "file:///Users/test/Documents/My%20Special%20Folder";
+			expect(normalizePath(testPath)).toBe("/Users/test/Documents/My Special Folder");
+		});
 
-      const result = utils.validatePath("/non/existent/path");
+		it("should handle paths with hash fragments", () => {
+			const testPath = "file:///Users/test/Documents/vault#section";
+			expect(normalizePath(testPath)).toBe("/Users/test/Documents/vault#section");
+		});
 
-      expect(result).toEqual({ isValid: false, isAccessible: false });
-      expect(mockExistsSync).toHaveBeenCalledWith("/non/existent/path");
-    });
+		it("should handle empty paths", () => {
+			expect(normalizePath("")).toBe("");
+		});
+	});
 
-    it("should return isValid=true and isAccessible=true for accessible directory", () => {
-      mockExistsSync.mockReturnValue(true);
-      mockStatSync.mockReturnValue({ isDirectory: () => true });
-      mockReaddirSync.mockReturnValue(["file1", "file2"]);
+	describe("validatePath", () => {
+		it("should return isValid=false if path does not exist", () => {
+			fs.existsSync.mockReturnValue(false);
 
-      const result = utils.validatePath("/accessible/directory");
+			const result = validatePath("/non/existent/path");
 
-      expect(result).toEqual({ isValid: true, isAccessible: true });
-      expect(mockExistsSync).toHaveBeenCalledWith("/accessible/directory");
-      expect(mockReaddirSync).toHaveBeenCalledWith("/accessible/directory");
-    });
+			expect(result).toEqual({ isValid: false, isAccessible: false });
+			expect(fs.existsSync).toHaveBeenCalledWith("/non/existent/path");
+		});
 
-    it("should return isValid=true and isAccessible=true for accessible file", () => {
-      mockExistsSync.mockReturnValue(true);
-      mockStatSync.mockReturnValue({ isDirectory: () => false });
+		it("should return isValid=true and isAccessible=true for accessible directory", () => {
+			fs.existsSync.mockReturnValue(true);
+			fs.statSync.mockReturnValue({ isDirectory: () => true });
+			fs.readdirSync.mockReturnValue(["file1", "file2"]);
 
-      const result = utils.validatePath("/accessible/file.txt");
+			const result = validatePath("/accessible/directory");
 
-      expect(result).toEqual({ isValid: true, isAccessible: true });
-      expect(mockExistsSync).toHaveBeenCalledWith("/accessible/file.txt");
-      expect(mockAccessSync).toHaveBeenCalledWith("/accessible/file.txt", 4);
-    });
+			expect(result).toEqual({ isValid: true, isAccessible: true });
+			expect(fs.existsSync).toHaveBeenCalledWith("/accessible/directory");
+			expect(fs.readdirSync).toHaveBeenCalledWith("/accessible/directory");
+		});
 
-    it("should return isValid=true but isAccessible=false for inaccessible directory", () => {
-      mockExistsSync.mockReturnValue(true);
-      mockStatSync.mockReturnValue({ isDirectory: () => true });
-      mockReaddirSync.mockImplementation(() => {
-        throw new Error("Permission denied");
-      });
+		it("should return isValid=true and isAccessible=true for accessible file", () => {
+			fs.existsSync.mockReturnValue(true);
+			fs.statSync.mockReturnValue({ isDirectory: () => false });
 
-      const result = utils.validatePath("/inaccessible/directory");
+			const result = validatePath("/accessible/file.txt");
 
-      expect(result).toEqual({ isValid: true, isAccessible: false });
-    });
-  });
+			expect(result).toEqual({ isValid: true, isAccessible: true });
+			expect(fs.existsSync).toHaveBeenCalledWith("/accessible/file.txt");
+			expect(fs.accessSync).toHaveBeenCalledWith("/accessible/file.txt", 4);
+		});
+
+		it("should return isValid=true but isAccessible=false for inaccessible directory", () => {
+			fs.existsSync.mockReturnValue(true);
+			fs.statSync.mockReturnValue({ isDirectory: () => true });
+			fs.readdirSync.mockImplementation(() => {
+				throw new Error("Permission denied");
+			});
+
+			const result = validatePath("/inaccessible/directory");
+
+			expect(result).toEqual({ isValid: true, isAccessible: false });
+		});
+
+		it("should return isValid=true but isAccessible=false for inaccessible file", () => {
+			fs.existsSync.mockReturnValue(true);
+			fs.statSync.mockReturnValue({ isDirectory: () => false });
+			fs.accessSync.mockImplementation(() => {
+				throw new Error("Permission denied");
+			});
+
+			const result = validatePath("/inaccessible/file.txt");
+
+			expect(result).toEqual({ isValid: true, isAccessible: false });
+		});
+
+		it("should handle stat errors gracefully", () => {
+			fs.existsSync.mockReturnValue(true);
+			fs.statSync.mockImplementation(() => {
+				throw new Error("Stat error");
+			});
+
+			const result = validatePath("/problem/path");
+
+			expect(result).toEqual({ isValid: true, isAccessible: false });
+		});
+	});
 });

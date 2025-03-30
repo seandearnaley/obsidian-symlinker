@@ -1,3 +1,7 @@
+# <div align="center">
+
+<img src="readme-icon.png" alt="Obsidian Symlinker Logo" width="128" height="128">
+
 # Obsidian Symlinker
 
 A lightweight desktop application that creates symlinks in your Obsidian vault to external markdown files on your computer.
