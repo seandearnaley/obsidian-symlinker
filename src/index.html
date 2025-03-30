@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Obsidian Symlinker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="titlebar">
+    <div class="title">Obsidian Symlinker</div>
+  </div>
+  
+  <div class="container">
+    <div class="section vault-section">
+      <h2>Obsidian Vault</h2>
+      <div class="input-group">
+        <input type="text" id="vault-path" readonly placeholder="Select your Obsidian vault folder">
+        <button id="choose-vault-btn">Choose Vault</button>
+      </div>
+    </div>
+    
+    <div class="section">
+      <h2>Markdown Files</h2>
+      <div class="input-group">
+        <input type="text" id="markdown-files" readonly placeholder="Select markdown files to symlink">
+        <button id="choose-markdown-btn">Choose Files</button>
+      </div>
+      <div id="file-list" class="file-list"></div>
+    </div>
+    
+    <div class="section">
+      <button id="create-symlinks-btn" class="primary-btn" disabled>Create Symlinks</button>
+    </div>
+    
+    <div class="section results-section">
+      <h2>Results</h2>
+      <div id="results" class="results"></div>
+    </div>
+    
+    <div class="section recent-section">
+      <h2>Recent Symlinks</h2>
+      <div id="recent-links" class="recent-links"></div>
+    </div>
+  </div>
+  
+  <script src="renderer.js"></script>
+</body>
+</html>
