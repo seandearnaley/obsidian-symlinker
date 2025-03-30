@@ -1,8 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const path = require("node:path");
-const fs = require("node:fs");
-const Store = require("electron-store");
-const os = require("node:os");
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { BrowserWindow, app, dialog, ipcMain, nativeTheme } from "electron";
+import Store from "electron-store";
+import { normalizePath, validatePath } from "./utils.js";
+
+// Get the equivalent of __dirname in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const store = new Store();
 
@@ -249,7 +255,6 @@ function createWindow() {
 
 	// Handle macOS dark mode changes
 	if (process.platform === "darwin") {
-		const { nativeTheme } = require("electron");
 		mainWindow.webContents.on("dom-ready", () => {
 			mainWindow.webContents.send("theme-changed", nativeTheme.shouldUseDarkColors);
 		});

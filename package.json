@@ -3,6 +3,7 @@
 	"version": "1.0.0",
 	"description": "Create symlinks in Obsidian vault to external markdown files",
 	"main": "src/main.js",
+	"type": "module",
 	"scripts": {
 		"start": "electron .",
 		"build": "electron-builder",
@@ -12,7 +13,11 @@
 		"lint": "biome lint .",
 		"format": "biome format --write .",
 		"check": "biome check --write .",
-		"prepare": "husky"
+		"prepare": "husky",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:ui": "vitest --ui",
+		"test:coverage": "vitest run --coverage"
 	},
 	"lint-staged": {
 		"*.{js,jsx,ts,tsx,json,css,md}": ["biome check --write"]
@@ -35,10 +40,15 @@
 	"license": "MIT",
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
+		"@playwright/test": "^1.42.1",
+		"@vitest/coverage-v8": "^1.5.1",
+		"@vitest/ui": "^1.5.1",
 		"electron": "^28.0.0",
 		"electron-builder": "^24.9.1",
 		"husky": "^9.1.7",
-		"lint-staged": "^15.5.0"
+		"lint-staged": "^15.5.0",
+		"playwright": "^1.42.1",
+		"vitest": "^1.5.1"
 	},
 	"dependencies": {
 		"electron-store": "^8.1.0"
