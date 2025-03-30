@@ -64,3 +64,21 @@ Platform-specific builds:
 ## License
 
 MIT
+
+## Code Quality with Biome
+
+This project uses [Biome](https://biomejs.dev/) for linting and formatting. Biome is a fast formatter and linter that helps maintain consistent code style across the project.
+
+### Available Scripts
+
+- `npm run lint` - Run Biome linting to check for code style issues
+- `npm run format` - Format code with Biome
+- `npm run check` - Run all Biome checks and fix automatically when possible
+
+### Pre-commit Hooks
+
+We use Husky and lint-staged to ensure code quality checks run before each commit. This helps maintain consistent code quality and prevents committing code with linting errors.
+
+### Configuration
+
+Biome configuration is located in the `biome.json` file at the project root. The configuration follows Biome's recommended defaults with minimal customizations
