@@ -369,6 +369,34 @@ describe("Application E2E Tests", () => {
     await playwrightExpect(page.locator("#create-symlinks-btn")).toBeDisabled();
   }, 20000); // Slightly reduced timeout
 
+  /**
+   * Test for clearing recent links functionality
+   *
+   * IMPORTANT IMPLEMENTATION NOTES:
+   * This test requires careful handling of Electron's IPC and dialog systems:
+   *
+   * 1. CRITICAL: You must mock BOTH window.confirm in the renderer process AND
+   *    dialog.showMessageBox in the main process - the app uses both for confirmation.
+   *
+   * 2. Simply mocking the dialogs is NOT enough - you must also mock the actual
+   *    IPC handlers (clear-recent-links and get-recent-links) to ensure proper state
+   *    management.
+   *
+   * 3. State must be properly refreshed with ipcMain.emit("recent-links-changed")
+   *    to trigger UI updates after clearing.
+   *
+   * 4. The test data accumulates across test runs if not properly cleaned, leading
+   *    to test failures. We use a flag to verify the clear operation completed.
+   *
+   * 5. Cleanup must happen in afterEach hooks to prevent state persistence between tests.
+   *
+   * Common pitfalls:
+   * - Mocking only window.confirm but not dialog.showMessageBox
+   * - Not properly implementing the clear-recent-links handler
+   * - Not emitting events to trigger UI updates
+   * - Not verifying the operation completed before assertions
+   * - Not handling the persistent state between tests
+   */
   it("should clear recent links when confirmed", async () => {
     // This flag helps ensure our mock handler was called
     await electronApp.evaluate(({ ipcMain }) => {
@@ -441,6 +469,7 @@ describe("Application E2E Tests", () => {
     expect(beforeCount).toBeGreaterThan(0);
 
     // CRITICAL: Mock both confirm methods AND the IPC handlers
+    // 1. Mock window.confirm in RENDERER process
     await page.evaluate(() => {
       window._originalConfirm = window.confirm;
       window.confirm = () => {
@@ -449,6 +478,7 @@ describe("Application E2E Tests", () => {
       };
     });
 
+    // 2. Mock both dialog.showMessageBox AND IPC handlers in MAIN process
     await electronApp.evaluate(({ dialog, ipcMain }) => {
       // Mock dialog first
       dialog.showMessageBox = async (win, options) => {
@@ -474,7 +504,8 @@ describe("Application E2E Tests", () => {
           return [];
         });
 
-        // Emit an event to refresh the UI
+        // CRITICAL: Emit an event to refresh the UI
+        // Without this, the UI won't update even if the store is cleared
         ipcMain.emit("recent-links-changed");
 
         return true;
@@ -486,6 +517,7 @@ describe("Application E2E Tests", () => {
     await page.locator("#clear-recent-btn").click();
 
     // Wait for our mock to be called and take effect
+    // This is important to ensure the async operations complete
     await electronApp.evaluate(async ({ ipcMain }) => {
       // Give a little time for events to propagate
       for (let i = 0; i < 10; i++) {
