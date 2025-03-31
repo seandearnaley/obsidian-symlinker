@@ -15,9 +15,9 @@ describe("JavaScript Fundamentals", () => {
 		it("should correctly compare values", () => {
 			expect(5 > 3).toBe(true);
 			expect(5 < 3).toBe(false);
-			expect(5 >= 5).toBe(true);
-			expect(5 <= 5).toBe(true);
-			expect(5 === 5).toBe(true);
+			expect(5 >= 4).toBe(true);
+			expect(4 <= 5).toBe(true);
+			expect(5 === Number('5')).toBe(true);
 			expect(5 === "5").toBe(false);
 			expect(5 !== "5").toBe(true);
 		});
@@ -73,8 +73,8 @@ describe("JavaScript Fundamentals", () => {
 				["c", 3],
 			]);
 			expect({ ...obj, d: 4 }).toEqual({ a: 1, b: 2, c: 3, d: 4 });
-			expect(obj.hasOwnProperty("a")).toBe(true);
-			expect(obj.hasOwnProperty("d")).toBe(false);
+			expect(Object.hasOwn(obj, "a")).toBe(true);
+			expect(Object.hasOwn(obj, "d")).toBe(false);
 		});
 	});
 

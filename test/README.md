@@ -22,9 +22,6 @@ npm run test:unit
 # Run only integration tests
 npm run test:integration
 
-# Run end-to-end tests (may be skipped in CI)
-npm run test:e2e
-
 # Run tests with coverage report
 npm run test:coverage
 
@@ -50,16 +47,11 @@ Located in `test/unit/`, these tests verify individual function behavior in isol
 Located in `test/integration/`, these tests verify integration between multiple modules.
 
 - `basic-integration.test.mjs`: Basic integration tests that don't require complex setup
-- `electron.test.mjs`: Integration tests for Electron components with Playwright (currently skipped)
-- `main-process.test.mjs`: Tests for the main process functionality (currently skipped) 
-- `renderer-mock.test.mjs`: Tests for the renderer process with a mocked DOM environment (currently skipped)
-
-Note: Some integration tests are currently skipped due to setup complexity. These tests require additional configuration to properly mock the Electron environment and will be enabled as the test infrastructure evolves.
 
 ### End-to-End Tests
 
-End-to-end tests use Playwright to launch the full Electron application and interact with it.
-These tests are marked with `.skipIf(process.env.CI === "true")` to avoid issues in CI environments.
+End-to-end tests would typically use Playwright to launch the full Electron application and interact with it.
+Currently, there are no end-to-end tests in the codebase.
 
 ## Mocks
 
