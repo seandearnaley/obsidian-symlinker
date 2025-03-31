@@ -1,14 +1,14 @@
-// This file is a simplified version of renderer.js for instrumentation and coverage
+// This file is a modified version of renderer.js for instrumentation and coverage
 // It exports functionality through window.rendererFunctions for testing
-
-// Use a comprehensive approach based on the actual renderer.js file
-// but wrapped to be testable and provide better coverage
 
 // Initialize state variables
 let vaultPath = "";
 let selectedFiles = [];
 let obsidianVaults = [];
 let lastSavedVaultPath = null;
+
+// Theme handling
+let isDarkMode = false;
 
 // Mock DOM Elements for testing
 // In tests, these will be replaced by actual mocks
@@ -24,6 +24,12 @@ const resultsEl = document.getElementById("results");
 const recentLinksEl = document.getElementById("recent-links");
 const clearRecentBtn = document.getElementById("clear-recent-btn");
 
+// Theme changed event listener - simulate ipcRenderer.on
+function handleThemeChange(isDark) {
+	isDarkMode = isDark;
+	document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
+}
+
 // Initialize app
 async function init() {
 	console.log("Initializing app");
@@ -31,23 +37,22 @@ async function init() {
 	// In the real renderer.js, we would use ipcRenderer.invoke
 	// Here we use the electronAPI exposed by the contextBridge
 	lastSavedVaultPath = await window.electronAPI.loadVaultPath();
+	console.log("Loaded saved vault path:", lastSavedVaultPath);
 
 	// Load Obsidian vaults and recent links
 	await loadObsidianVaults();
 	loadRecentLinks();
-
-	// We don't call registerEventListeners() here because
-	// the tests will call individual functions directly
 }
 
 // Register event listeners for DOM elements
 function registerEventListeners() {
-	// Setup event listeners for UI elements (simplified for testing)
+	// Setup event listeners for UI elements
 	refreshVaultsBtn.addEventListener("click", loadObsidianVaults);
 
 	vaultSelector.addEventListener("change", () => {
 		const selectedPath = vaultSelector.value;
 		if (selectedPath) {
+			console.log("Vault selected from dropdown:", selectedPath);
 			selectVaultByPath(selectedPath);
 		}
 	});
@@ -55,32 +60,40 @@ function registerEventListeners() {
 	chooseVaultBtn.addEventListener("click", async () => {
 		const selectedPath = await window.electronAPI.chooseVault();
 		if (selectedPath) {
+			console.log("Custom vault selected:", selectedPath);
 			selectVaultByPath(selectedPath);
+			// Reset the selector to "Select a vault" for custom paths
+			vaultSelector.selectedIndex = 0;
 		}
 	});
 
 	chooseMarkdownBtn.addEventListener("click", chooseMarkdownFiles);
-
 	createSymlinksBtn.addEventListener("click", createSymlinks);
-
 	clearRecentBtn.addEventListener("click", clearRecentLinks);
 }
 
 // Load Obsidian vaults from system
 async function loadObsidianVaults() {
 	try {
+		console.log("Loading Obsidian vaults");
 		obsidianVaults = await window.electronAPI.getObsidianVaults();
+		console.log(`Found ${obsidianVaults.length} vaults`);
 
 		// Populate the selector
 		populateVaultSelector();
 
 		// Handle auto-selection
 		if (obsidianVaults.length > 0) {
+			// If we have a saved path, use it
 			if (lastSavedVaultPath) {
+				console.log("Using saved vault path:", lastSavedVaultPath);
 				selectVaultByPath(lastSavedVaultPath);
-			} else {
+			}
+			// Otherwise auto-select the first available vault
+			else {
 				const firstVault = obsidianVaults[0];
 				if (firstVault?.path) {
+					console.log("Auto-selecting first vault:", firstVault.path);
 					selectVaultByPath(firstVault.path);
 				}
 			}
@@ -100,17 +113,18 @@ async function loadObsidianVaults() {
 
 // Populate vault selector dropdown
 function populateVaultSelector() {
-	// Clear existing options
+	// Clear existing options except the default one
 	while (vaultSelector.options.length > 1) {
 		vaultSelector.remove(1);
 	}
 
 	// Add vaults to dropdown
 	if (obsidianVaults.length > 0) {
+		// Add section title for automatic vaults
 		let hasConfigVaults = false;
 		let hasManualVaults = false;
 
-		// Check if we have both types
+		// First, check if we have both types
 		for (const vault of obsidianVaults) {
 			if (vault.id.startsWith("manual-")) {
 				hasManualVaults = true;
@@ -163,7 +177,9 @@ function populateVaultSelector() {
 function selectVaultByPath(targetPath) {
 	if (!targetPath) return;
 
-	// First check if it's in our list
+	console.log(`Selecting vault path: "${targetPath}"`);
+
+	// First check if it's in our list of Obsidian vaults
 	let found = false;
 
 	for (let i = 0; i < vaultSelector.options.length; i++) {
@@ -171,14 +187,15 @@ function selectVaultByPath(targetPath) {
 		if (option.value === targetPath) {
 			vaultSelector.selectedIndex = i;
 			found = true;
+			console.log(`Found matching vault in selector at index ${i}`);
 			break;
 		}
 	}
 
-	// Always set the vault path
+	// Always set the vault path in our state
 	vaultPath = targetPath;
 
-	// Update input field
+	// Always update the input field with the path
 	vaultPathInput.value = targetPath;
 
 	// Save the path
@@ -188,8 +205,10 @@ function selectVaultByPath(targetPath) {
 	// Update button state
 	updateCreateButtonState();
 
-	// Reset selector if not found
+	// If not found in the dropdown but valid path, it's a custom vault
 	if (!found && targetPath) {
+		console.log(`Path ${targetPath} not found in selector, treating as custom vault`);
+		// Reset the selector to default
 		vaultSelector.selectedIndex = 0;
 	}
 }
@@ -198,14 +217,14 @@ function selectVaultByPath(targetPath) {
 async function chooseMarkdownFiles() {
 	const files = await window.electronAPI.chooseMarkdown();
 	if (files && files.length > 0) {
-		// We use a mock path.basename for testing
+		// We use a mock path.basename for testing since we can't import path directly
 		const basename = (filepath) => {
 			if (!filepath) return "";
 			const parts = filepath.split(/[\/\\]/);
 			return parts[parts.length - 1];
 		};
 
-		// Convert to file objects
+		// Convert to file objects with additional properties
 		selectedFiles = files.map((filePath) => ({
 			filePath,
 			originalName: basename(filePath),
@@ -213,6 +232,7 @@ async function chooseMarkdownFiles() {
 			editing: false,
 		}));
 
+		console.log(`Selected ${files.length} files:`, selectedFiles);
 		markdownFilesInput.value = `${files.length} file(s) selected`;
 		renderFileList();
 		updateCreateButtonState();
@@ -257,7 +277,7 @@ function renderFileList() {
 				file.editing = false;
 			}
 
-			// Toggle editing for this file
+			// Toggle editing for this file only
 			fileObj.editing = true;
 			renderFileList();
 		};
@@ -292,11 +312,52 @@ function renderFileList() {
 			// Auto-focus the input field
 			setTimeout(() => nameInput.focus(), 0);
 
+			// Track if the filename has a valid extension
+			let hasValidExtension = nameInput.value.toLowerCase().endsWith(".md");
+
+			// Add extension warning if needed
+			function updateExtensionWarning() {
+				// Remove any existing warning
+				const existingWarning = fileItem.querySelector(".extension-warning");
+				if (existingWarning) {
+					fileItem.removeChild(existingWarning);
+				}
+
+				// Check if extension is valid
+				hasValidExtension = nameInput.value.toLowerCase().endsWith(".md");
+
+				// Add warning if needed
+				if (!hasValidExtension) {
+					const warningEl = document.createElement("div");
+					warningEl.className = "extension-warning";
+					warningEl.innerHTML =
+						'<span class="warning-icon">⚠️</span> Filename must end with .md to work in Obsidian';
+					fileItem.appendChild(warningEl);
+				}
+			}
+
+			// Auto-select filename without extension
+			nameInput.onfocus = () => {
+				const extIndex = nameInput.value.lastIndexOf(".");
+				if (extIndex > 0) {
+					nameInput.setSelectionRange(0, extIndex);
+				}
+			};
+
+			// Handle input changes
+			nameInput.oninput = () => {
+				updateExtensionWarning();
+			};
+
+			// Initial extension check
+			updateExtensionWarning();
+
 			// Save button
 			const saveBtn = document.createElement("button");
 			saveBtn.textContent = "Save";
 			saveBtn.onclick = () => {
 				let newName = nameInput.value.trim();
+				console.log("Save clicked. Original name:", fileObj.originalName, "Input value:", newName);
 
 				// Force .md extension if missing
 				if (!newName.toLowerCase().endsWith(".md")) {
@@ -309,15 +370,19 @@ function renderFileList() {
 					}
 					// Notify the user that extension was added
 					nameInput.value = newName;
+					console.log("Added .md extension. New name:", newName);
 				}
 
 				// Only set customName if it's different from the original
 				if (newName && newName !== fileObj.originalName) {
+					console.log("Setting custom name:", newName);
 					fileObj.customName = newName;
 				} else {
+					console.log("Using original name:", fileObj.originalName);
 					fileObj.customName = null;
 				}
 
+				console.log("Updated file object:", fileObj);
 				fileObj.editing = false;
 				renderFileList();
 			};
@@ -347,16 +412,25 @@ async function createSymlinks() {
 
 	resultsEl.innerHTML = "";
 
+	console.log("Create Symlinks function called. Selected files:", selectedFiles);
+
 	// Serialize file objects with their custom names for IPC
-	const filesToProcess = selectedFiles.map((file) => ({
-		filePath: file.filePath,
-		customName: file.customName,
-	}));
+	const filesToProcess = selectedFiles.map((file) => {
+		console.log(`Processing file: ${file.originalName}, Custom name: ${file.customName || "NONE"}`);
+		return {
+			filePath: file.filePath,
+			customName: file.customName,
+		};
+	});
+
+	console.log("Files to send to main process:", filesToProcess);
 
 	const results = await window.electronAPI.createSymlink({
 		targetFiles: filesToProcess,
 		vaultPath: vaultPath,
 	});
+
+	console.log("Results from main process:", results);
 
 	renderResults(results);
 
@@ -479,4 +553,21 @@ window.rendererFunctions = {
 	clearRecentLinks,
 	chooseMarkdownFiles,
 	registerEventListeners,
+	handleThemeChange,
+	// For testing internal state
+	getState: () => ({
+		vaultPath,
+		selectedFiles,
+		obsidianVaults,
+		lastSavedVaultPath,
+		isDarkMode,
+	}),
+	// For setting state in tests
+	setState: (newState) => {
+		if (newState.vaultPath !== undefined) vaultPath = newState.vaultPath;
+		if (newState.selectedFiles !== undefined) selectedFiles = newState.selectedFiles;
+		if (newState.obsidianVaults !== undefined) obsidianVaults = newState.obsidianVaults;
+		if (newState.lastSavedVaultPath !== undefined) lastSavedVaultPath = newState.lastSavedVaultPath;
+		if (newState.isDarkMode !== undefined) isDarkMode = newState.isDarkMode;
+	},
 };
