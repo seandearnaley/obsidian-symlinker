@@ -5,8 +5,8 @@ This directory contains tests for the Obsidian Symlinker application, organized 
 ## Test Structure
 
 - **Unit Tests**: Basic tests for individual functions
-- **Integration Tests**: Cross-module tests verifying larger system behavior
-- **End-to-End Tests**: Testing the full application with Electron
+- **Integration Tests**: Tests verifying interactions between modules, potentially with mocks (found in `test/integration/`)
+- **End-to-End (E2E) / Electron Integration Tests**: Tests using Playwright to launch and interact with the full Electron application (found in `test/e2e/`)
 
 ## Running Tests
 
@@ -19,10 +19,13 @@ npm test
 # Run only unit tests
 npm run test:unit
 
-# Run only integration tests
+# Run only integration tests (module interactions)
 npm run test:integration
 
-# Run tests with coverage report
+# Run only E2E / Electron tests (requires app build potentially)
+npm run test:e2e
+
+# Run tests with coverage report (primarily for unit/integration tests)
 npm run test:coverage
 
 # Run tests in watch mode
@@ -46,12 +49,13 @@ Located in `test/unit/`, these tests verify individual function behavior in isol
 
 Located in `test/integration/`, these tests verify integration between multiple modules.
 
-- `basic-integration.test.mjs`: Basic integration tests that don't require complex setup
+- `basic-integration.test.mjs`: Basic integration tests verifying file access and simple module imports.
 
-### End-to-End Tests
+### End-to-End (E2E) / Electron Integration Tests
 
-End-to-end tests would typically use Playwright to launch the full Electron application and interact with it.
-Currently, there are no end-to-end tests in the codebase.
+Located in `test/e2e/`, these tests use Playwright to launch the actual Electron application and simulate user interactions. They verify the complete flow, including main-renderer process communication (IPC) and UI behavior.
+
+- `app.test.mjs`: Core E2E tests covering application launch, UI elements, and basic IPC interactions.
 
 ## Mocks
 
@@ -61,10 +65,11 @@ Common mocks are located in `test/mocks/` to be shared across different test fil
 
 ## Testing Philosophy
 
-1. **Maintainable**: Tests are designed to be maintainable and not break with minor UI changes
-2. **Fast**: Tests use mocks where appropriate to ensure fast test execution
-3. **Comprehensive**: Tests cover various aspects of the application, including edge cases
-4. **Isolated**: Tests are isolated from each other and can run in any order
+1.  **Unit Tests**: Focus on isolated logic using mocks (`test/unit/`). Fast execution.
+2.  **Integration Tests**: Verify interactions between internal modules, potentially using mocks (`test/integration/`). Reasonably fast.
+3.  **E2E / Electron Tests**: Use Playwright (`test/e2e/`) to test the real application flow, including UI and IPC. Slower but provides highest confidence. Minimize reliance on internal implementation details.
+4.  **Maintainable**: Tests should be resilient to minor code refactoring and UI tweaks where possible. E2E tests target user-visible behavior.
+5.  **Comprehensive**: Aim for good coverage across different test types.
 
 ## Platform Testing
 

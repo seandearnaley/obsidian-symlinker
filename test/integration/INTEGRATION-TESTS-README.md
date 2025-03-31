@@ -1,100 +1,44 @@
-# Integration Tests Guide
+# Integration & E2E Tests Guide
 
-This document explains the current state of the integration tests and provides guidance for future improvements.
+This document explains the testing strategy for integration and end-to-end (E2E) scenarios.
 
-## Current State
+## Current State & Strategy
 
-The integration tests for Obsidian Symlinker are currently in the following state:
+Integration and E2E testing for Obsidian Symlinker is approached as follows:
 
-1. **Working Tests**:
-   - `basic-integration.test.mjs`: Simple integration tests that verify file access and basic inter-module dependencies
+1.  **Module Integration Tests (`test/integration/`)**:
+    * These tests focus on verifying the interaction between different *internal* modules of the application (e.g., ensuring `main.js` correctly imports and uses functions from `utils.js`).
+    * They typically do *not* involve launching the full Electron application and may use mocks for Electron APIs or external dependencies.
+    * `basic-integration.test.mjs`: Verifies file access and basic inter-module dependencies.
 
-2. **Skipped Tests** (need fixing):
-   - `electron.test.mjs`: UI integration tests using Playwright
-   - `main-process.test.mjs`: Tests for the main Electron process
-   - `renderer-mock.test.mjs`: Tests for the renderer process using JSDOM
+2.  **Electron E2E / Integration Tests (`test/e2e/`)**:
+    * These tests use **Playwright** to launch the *actual* Electron application.
+    * They test the complete workflow, including UI interactions, main-renderer process communication (IPC), and integration with Electron APIs.
+    * These provide the highest level of confidence that the application works as expected for the user.
+    * See `test/e2e/app.test.mjs`.
 
-## Known Issues
-
-### Electron Application Tests
-
-The Electron application tests using Playwright are skipped due to these issues:
-
-- Cannot access `window.electron.ipcRenderer` in the page context
-- Difficulty mocking IPC communication between the main and renderer processes
-- Need to properly configure the Playwright/Electron test environment
-
-### Main Process Tests
-
-The Main Process tests are skipped due to:
-
-- Issues with `vi.mock()` for `node:fs` and other modules
-- Difficulty importing and mocking the main.js module
-- Challenges in testing the Electron IPC handlers
-
-### Renderer Process Tests
-
-The Renderer Process tests using JSDOM are skipped due to:
-
-- Difficulty loading the renderer.js code that depends on Node.js modules
-- Challenges in mocking the DOM environment and required globals
-- Complex DOM manipulation that's hard to test in isolation
-
-## How to Fix
-
-### General Approach
-
-1. **Module Structure**: Consider restructuring the application code to be more testable
-   - Separate business logic from UI code
-   - Use dependency injection for easier mocking
-   - Create testable pure functions where possible
-
-2. **Testing Infrastructure**:
-   - Use proper test fixtures for setting up and tearing down the test environment
-   - Create specialized test helpers for common operations
-   - Consider using Spectron or similar tools for Electron testing
-
-### Specific Fixes
-
-#### Electron Application Tests
-- Use Playwright's `addInitScript()` to inject mocked Electron IPC before the page loads
-- Modify the application to allow for dependency injection in test mode
-- Use a test-specific Electron configuration
-
-#### Main Process Tests
-- Fix the async mocking with proper `importOriginal` handling
-- Properly mock Electron dependencies
-- Extract the handler functions to standalone, importable functions
-
-#### Renderer Process Tests
-- Use a bundler (like esbuild or Webpack) to create a testable version of renderer.js
-- Create a proper DOM fixture with all required elements
-- Inject mocked modules before executing the code
+**Note:** Previous mentions of skipped tests (`electron.test.mjs`, `main-process.test.mjs`, `renderer-mock.test.mjs`) referred to prior testing attempts. The current strategy relies on Playwright for full Electron application testing.
 
 ## Running Tests
 
 ```bash
-# Run all integration tests (including skipped ones)
+# Run module integration tests
 npm run test:integration
 
-# Run only the working integration tests
-npx vitest run test/integration/basic-integration.test.mjs
+# Run E2E / Electron tests using Playwright
+npm run test:e2e
 ```
 
 ## Adding New Tests
 
-When adding new integration tests:
+When adding new tests:
 
-1. Start with simple tests that don't require complex mocking
-2. Add tests incrementally, starting with module dependencies
-3. Document any assumptions or special setup requirements
-4. Use proper assertions with meaningful error messages
+1.  **Unit Tests (`test/unit/`)**: Test individual functions/modules in isolation, using mocks heavily.
+2.  **Module Integration Tests (`test/integration/`)**: Test interactions *between* your own modules, mocking Electron/external parts if needed.
+3.  **E2E / Electron Tests (`test/e2e/`)**: Use Playwright to test user flows in the real app. Focus on user actions and visible outcomes. Mock external services or filesystem interactions where necessary for reliability using Playwright's features (`page.route`, `electronApp.evaluate`, IPC interception).
 
 ## Future Work
 
-The following improvements are planned:
-
-1. Refactor renderer.js to be more testable (separate UI from logic)
-2. Create proper test fixtures for Electron environment
-3. Add end-to-end tests using Playwright
-4. Implement proper mocking for IPC communication
+1.  Expand E2E test coverage in `test/e2e/app.test.mjs` to cover core features like file selection, renaming, symlink creation, and recent links.
+2.  Refactor `renderer.js` and `main.js` if needed to improve testability (e.g., separating logic from Electron-specific calls).
+3.  Implement more sophisticated mocking within Playwright tests (e.g., mocking `electron-store` or filesystem operations) for more complex scenarios.
