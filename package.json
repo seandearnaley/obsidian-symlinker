@@ -18,6 +18,9 @@
 		"test:watch": "vitest",
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest run --coverage",
+		"test:integration": "vitest run test/integration/",
+		"test:unit": "vitest run test/unit/",
+		"test:e2e": "vitest run test/integration/electron.test.mjs",
 		"commitlint": "commitlint --edit"
 	},
 	"lint-staged": {

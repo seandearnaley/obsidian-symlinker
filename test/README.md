@@ -1,105 +1,90 @@
-# Obsidian Symlinker Testing
+# Obsidian Symlinker Tests
 
-This directory contains tests for the Obsidian Symlinker application. The testing infrastructure is designed to provide comprehensive coverage and verification of the application's functionality.
+This directory contains tests for the Obsidian Symlinker application, organized by test type.
 
 ## Test Structure
 
-The test structure is organized as follows:
-
-- **Unit Tests** (`/test/unit/`): Tests individual components and functions in isolation
-  - `app-utils.test.mjs`: Tests for utility functions adapted from main and renderer
-  - `basic.test.mjs`: Simple tests to verify the testing environment
-  - `coverage-harness.test.mjs`: Special tests targeting code coverage
-  - `main-coverage.test.mjs`: Coverage-specific tests for main.js
-  - `main.test.mjs`: Core tests for main process functionality
-  - `renderer-coverage.test.mjs`: Coverage-specific tests for renderer.js
-  - `renderer-include.test.mjs`: Helper file for renderer coverage
-  - `renderer-instrumented.js`: Instrumented version of renderer code
-  - `renderer.test.mjs`: Core tests for renderer process functionality
-  - `utils.test.mjs`: Tests for the utils.js module
-
-- **Integration Tests** (`/test/integration/`): Tests interactions between components
-  - `electron.test.mjs`: Tests Electron-specific functionality
-
-## Current Test Coverage
-
-The current test coverage is as follows:
-
-- **main.js**: 69.45% line coverage
-- **renderer.js**: 34.75% line coverage (significantly improved from 0%)
-- **utils.js**: 100% line coverage
-- **Overall**: 56.14% coverage (substantially improved from initial 13.56%)
-
-The coverage for main.js and renderer.js is limited by their dependencies on Electron APIs, which are challenging to fully mock in a test environment. However, we've made substantial progress in testing both through comprehensive mocking and instrumentation strategies.
+- **Unit Tests**: Basic tests for individual functions
+- **Integration Tests**: Cross-module tests verifying larger system behavior
+- **End-to-End Tests**: Testing the full application with Electron
 
 ## Running Tests
 
-To run the tests, use the following command:
+The following npm scripts are available:
 
 ```bash
+# Run all tests
 npm test
-```
 
-To run tests with coverage reporting:
+# Run only unit tests
+npm run test:unit
 
-```bash
+# Run only integration tests
+npm run test:integration
+
+# Run end-to-end tests (may be skipped in CI)
+npm run test:e2e
+
+# Run tests with coverage report
 npm run test:coverage
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with UI
+npm run test:ui
 ```
 
-> **Note on Coverage Reporting**: While our renderer.js tests show significantly improved coverage in our test results, the coverage report may still show 0% coverage for renderer.js. This is due to the challenges in instrumenting code that uses Electron's renderer process features in a Node.js environment. However, our test suite effectively tests most of the renderer functionality through instrumented versions of the code.
+## Test Types
 
-## Testing Approach
+### Unit Tests
 
-The testing strategy employs several approaches:
+Located in `test/unit/`, these tests verify individual function behavior in isolation.
 
-1. **Mocking**: Extensive use of mocks for Electron APIs, file system operations, and DOM interactions
-2. **Isolation**: Testing components in isolation to minimize dependencies
-3. **Coverage Harnesses**: Special test files designed specifically to maximize code coverage
-4. **Platform-Specific Testing**: Tests for Windows, macOS, and Linux-specific code paths
+- `utils.test.mjs`: Tests for utility functions like `normalizePath` and `validatePath`
+- `app-utils.test.mjs`: Tests for application-specific utility functions
+- `basic.test.mjs`: Basic tests to ensure the testing framework is configured correctly
 
-## Test Utilities
+### Integration Tests
 
-The tests use the following tools and utilities:
+Located in `test/integration/`, these tests verify integration between multiple modules.
 
-- **Vitest**: Modern test runner and assertion library
-- **Mock Objects**: Custom mock implementations of Electron, DOM, and Node.js APIs
-- **Coverage Instrumentation**: V8 coverage reporting through Vitest
+- `basic-integration.test.mjs`: Basic integration tests that don't require complex setup
+- `electron.test.mjs`: Integration tests for Electron components with Playwright (currently skipped)
+- `main-process.test.mjs`: Tests for the main process functionality (currently skipped) 
+- `renderer-mock.test.mjs`: Tests for the renderer process with a mocked DOM environment (currently skipped)
 
-## Successful Strategies
+Note: Some integration tests are currently skipped due to setup complexity. These tests require additional configuration to properly mock the Electron environment and will be enabled as the test infrastructure evolves.
 
-Several strategies have proven effective in improving coverage:
+### End-to-End Tests
 
-1. **Comprehensive IPC Mocking**: Creating detailed mocks of `ipcMain` and `ipcRenderer` that intercept and simulate calls
-2. **DOM Simulation**: Using JSDOM with extensive element mocking to test renderer code
-3. **Platform-Specific Testing**: Mocking `process.platform` to test Windows, macOS, and Linux code paths
-4. **Instrumented Renderer Code**: Creating a specialized version of renderer.js for testing that exposes key functions
-5. **Window API Mocking**: Simulating the `window.electronAPI` exposed by contextBridge
-6. **Event Simulation**: Triggering DOM and IPC events directly with mock handlers
-7. **State Inspection**: Exposing internal state through getter methods for test verification
-8. **Direct DOM Testing**: Testing UI components by inspecting the rendered DOM after operations
+End-to-end tests use Playwright to launch the full Electron application and interact with it.
+These tests are marked with `.skipIf(process.env.CI === "true")` to avoid issues in CI environments.
 
-## Future Improvements
+## Mocks
 
-To further improve the test coverage, the following approaches could be considered:
+Common mocks are located in `test/mocks/` to be shared across different test files.
 
-1. **Real Electron Environment**: Using actual Electron instances for testing with tools like Spectron
-2. **End-to-End Testing**: Implementing E2E tests with tools like Playwright or WebdriverIO's Electron service
-3. **More Sophisticated DOM Mocking**: Developing more comprehensive simulations of DOM events and interactions
-4. **Focus on Uncovered Areas**: Targeting the specific untested portions of main.js and renderer.js
+- `electron-mock.mjs`: Reusable mocks for Electron modules and related dependencies
 
-## Challenges
+## Testing Philosophy
 
-Testing an Electron application presents several challenges:
+1. **Maintainable**: Tests are designed to be maintainable and not break with minor UI changes
+2. **Fast**: Tests use mocks where appropriate to ensure fast test execution
+3. **Comprehensive**: Tests cover various aspects of the application, including edge cases
+4. **Isolated**: Tests are isolated from each other and can run in any order
 
-1. **Inter-Process Communication**: Mocking IPC between main and renderer processes
-2. **DOM Interactions**: Simulating DOM interactions in a Node.js environment
-3. **Platform-Specific Code**: Testing code that behaves differently across platforms
-4. **File System Operations**: Safely testing operations like symlink creation
+## Platform Testing
 
-## Continuous Integration
+The tests include platform-specific tests that simulate running on Windows, macOS, and Linux
+to ensure cross-platform compatibility.
 
-These tests can be integrated into a CI/CD pipeline to ensure code quality before deployment.
+## Adding New Tests
 
-## Test Documentation
+When adding new tests, follow these guidelines:
 
-Each test file contains detailed documentation about the tests being performed and the approach used.
+1. Place tests in the appropriate directory based on test type
+2. Use mocks when testing components that depend on external systems
+3. Keep tests focused on specific functionality
+4. Use descriptive test names that clearly explain what is being tested
+5. Follow the existing patterns for setup and cleanup
