@@ -6,6 +6,8 @@
 
 A lightweight desktop application that creates symlinks in your Obsidian vault to external markdown files on your computer.
 
+<img src="screenshot-resized.png" alt="Obsidian Symlinker Screenshot" width="800">
+
 ## Features
 
 - Select your Obsidian vault folder
