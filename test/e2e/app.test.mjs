@@ -2,7 +2,9 @@ import { _electron as electron } from "playwright";
 import { expect as playwrightExpect } from "@playwright/test"; // Use Playwright's expect directly
 import {
   afterAll,
+  afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect as vitestExpect,
   it,
@@ -22,51 +24,125 @@ const mainFile = path.join(projectRoot, "src", "main.js");
 let electronApp;
 let page;
 
+// Store keys for temporary properties on main process dialog module
+const originalOpenDialogKey = "__vitest_originalShowOpenDialog";
+const originalMessageBoxKey = "__vitest_originalShowMessageBox";
+
 beforeAll(async () => {
   // Launch the Electron app
-  electronApp = await electron.launch({
-    args: [mainFile],
-    // Optional: Add environment variables if needed
-    // env: { ...process.env, NODE_ENV: 'test' }
-  });
-
-  // Wait for the first window to open
+  electronApp = await electron.launch({ args: [mainFile] });
   page = await electronApp.firstWindow();
 
-  // Optional: Add listeners for debugging
+  // Store original dialog methods ON the dialog object in the main process
+  await electronApp.evaluate(
+    ({ dialog }, { openKey, msgBoxKey }) => {
+      if (typeof dialog.showOpenDialog === 'function') {
+        dialog[openKey] = dialog.showOpenDialog;
+         console.log('[Main Process] Stored original showOpenDialog');
+      } else {
+         console.error('[Main Process] Failed to store original showOpenDialog');
+      }
+      if (typeof dialog.showMessageBox === 'function') {
+        dialog[msgBoxKey] = dialog.showMessageBox;
+         console.log('[Main Process] Stored original showMessageBox');
+      } else {
+          console.error('[Main Process] Failed to store original showMessageBox');
+      }
+    },
+    { openKey: originalOpenDialogKey, msgBoxKey: originalMessageBoxKey }
+  );
+
   page.on("console", (msg) => console.log("RENDERER:", msg.text()));
   page.on("pageerror", (error) => console.error("RENDERER ERROR:", error));
-
-  // Wait for the window to be ready (e.g., check for an element)
   await page.waitForSelector("body");
-}, 30000); // Increase timeout for app launch
+}, 30000);
+
+afterEach(async () => {
+  // Restore original dialog methods after each test from stored properties
+  await electronApp.evaluate(
+    ({ dialog }, { openKey, msgBoxKey }) => {
+      if (typeof dialog[openKey] === 'function') {
+        dialog.showOpenDialog = dialog[openKey];
+        console.log("[Main Process] Restored original showOpenDialog in afterEach.");
+      }
+       if (typeof dialog[msgBoxKey] === 'function') {
+        dialog.showMessageBox = dialog[msgBoxKey];
+         console.log("[Main Process] Restored original showMessageBox in afterEach.");
+      }
+      // No need to delete the keys, they'll be overwritten in beforeAll if needed again,
+      // or potentially cleaned up in afterAll if desired.
+    },
+    { openKey: originalOpenDialogKey, msgBoxKey: originalMessageBoxKey }
+  );
+   // Also remove IPC mocks if they were set
+   await electronApp.evaluate(async ({ ipcMain }) => {
+        ipcMain.removeHandler('create-symlink');
+   });
+});
 
 afterAll(async () => {
-  // Close the Electron app
+  // Clean up temporary properties on dialog and close app
   if (electronApp) {
+     await electronApp.evaluate(
+        ({ dialog }, { openKey, msgBoxKey }) => {
+            // Optional: Clean up properties if desired
+            if (dialog[openKey]) dialog[openKey] = undefined;
+            if (dialog[msgBoxKey]) dialog[msgBoxKey] = undefined;
+        },
+        { openKey: originalOpenDialogKey, msgBoxKey: originalMessageBoxKey }
+     );
     await electronApp.close();
   }
 });
 
 describe("Application E2E Tests", () => {
   it("should launch the application window", async () => {
-    // Use vitest_expect (Vitest) for non-Playwright object assertions
     vitest_expect(electronApp).toBeDefined();
     vitest_expect(page).toBeDefined();
-
     const windowCount = await electronApp.windows().length;
-    vitest_expect(windowCount).toBe(1); // Ensure only one window is open initially
+    vitest_expect(windowCount).toBe(1);
+  });
+
+  it("should select a custom vault path", async () => {
+    const mockVaultPath = "/selected/custom/vault";
+
+    // Mock dialog methods just for this test
+    await electronApp.evaluate(
+      ({ dialog }, { vaultPath, openKey, msgBoxKey }) => {
+        // Mock showOpenDialog to return a directory
+        dialog.showOpenDialog = async (win, options) => {
+          if (options?.properties?.includes("openDirectory")) {
+            console.log("[Main Process Mock] Vault Select: showOpenDialog mocked.");
+            return { canceled: false, filePaths: [vaultPath] };
+          }
+          // Fallback to original if stored and needed for other calls
+          return typeof dialog[openKey] === 'function' ? dialog[openKey](win, options) : { canceled: true, filePaths: [] };
+        };
+        // Mock showMessageBox to simulate clicking "Use Anyway"
+        dialog.showMessageBox = async () => {
+          console.log("[Main Process Mock] Vault Select: showMessageBox mocked.");
+          return { response: 0 };
+        };
+      },
+      { vaultPath: mockVaultPath, openKey: originalOpenDialogKey, msgBoxKey: originalMessageBoxKey }
+    );
+
+    await page.locator("#choose-vault-btn").click();
+
+    // Assertions
+    await playwrightExpect(page.locator("#vault-path")).toHaveValue(mockVaultPath);
+    await playwrightExpect(page.locator("#vault-selector")).toHaveValue("");
+    await playwrightExpect(page.locator("#create-symlinks-btn")).toBeDisabled();
+    // Cleanup happens in afterEach
   });
 
   it("should display the correct title", async () => {
-    // Wait for the title element in the custom title bar
     await page.waitForSelector(".titlebar .title");
     const title = await page.textContent(".titlebar .title");
-    expect(title).toBe("Obsidian Symlinker");
+    playwrightExpect(title).toBe("Obsidian Symlinker");
   });
 
   it("should have the main UI elements visible", async () => {
-    // Use Playwright's expect for locator assertions
     await playwrightExpect(page.locator("#vault-selector")).toBeVisible();
     await playwrightExpect(page.locator("#choose-vault-btn")).toBeVisible();
     await playwrightExpect(page.locator("#choose-markdown-btn")).toBeVisible();
@@ -75,215 +151,200 @@ describe("Application E2E Tests", () => {
     await playwrightExpect(page.locator("#recent-links")).toBeVisible();
   });
 
-  it("should load the saved vault path via IPC on init", async () => {
-    const mockVaultPath = "/mock/saved/vault/path";
-
-    await electronApp.evaluate(
-      async ({ ipcMain }, mockPath) => {
-        // If ipcMain is already listening, remove handler first (might be flaky)
-        // A better approach is often to ensure mocks are set before handlers register.
-        // For this test, we assume we can intercept the call.
-        // Note: This specific evaluate mocking might be tricky depending on timing.
-        // A safer way: mock the 'electron-store' dependency in the main process if possible,
-        // or intercept the call from the renderer side.
-        // Let's try intercepting the 'invoke' from the renderer:
-        // This requires the window context to be ready.
-      },
-      { mockVaultPath }
-    );
-
-    await page.exposeFunction("mockLoadVaultPath", () => mockVaultPath);
-    await page.evaluate(() => {
-      const originalInvoke = window.require("electron").ipcRenderer.invoke;
-      window.require("electron").ipcRenderer.invoke = async (
-        channel,
-        ...args
-      ) => {
-        if (channel === "load-vault-path") {
-          console.log(`Intercepted ${channel}, returning mock path.`);
-          return window.mockLoadVaultPath();
-        }
-        return originalInvoke(channel, ...args);
-      };
-    });
-
-    await page.waitForTimeout(500);
-
-    const receivedPath = await page.evaluate(async () => {
-      return document.getElementById("vault-path").value;
-    });
-
-    await playwrightExpect(page.locator("#vault-path")).toBeVisible();
-  });
-
   it("should allow renaming a selected file", async () => {
-    // --- Setup: Select files first to make test independent ---
     const mockFiles = ["/path/to/file1-for-rename.md", "/path/to/file2.md"];
-    await electronApp.evaluate(
-      async ({ dialog }, { filePaths }) => {
-        if (!dialog._originalShowOpenDialog) {
-          dialog._originalShowOpenDialog = dialog.showOpenDialog;
-        }
-        dialog.showOpenDialog = async () => {
-          console.log(
-            "[Main Process Mock] dialog.showOpenDialog called for rename test, returning mock files"
-          );
-          return Promise.resolve({ canceled: false, filePaths });
-        };
-      },
-      { filePaths: mockFiles }
-    );
+
+    // --- Setup: Select files first ---
+     await electronApp.evaluate(
+        ({ dialog }, { filePaths, openKey }) => {
+            dialog.showOpenDialog = async (win, options) => {
+                if (options?.properties?.includes("openFile")) {
+                    console.log("[Main Process Mock] Rename Test: showOpenDialog (file) mocked.");
+                    return { canceled: false, filePaths };
+                }
+                 // Fallback to original if stored
+                 return typeof dialog[openKey] === 'function' ? dialog[openKey](win, options) : { canceled: true, filePaths: [] };
+            };
+        }, { filePaths: mockFiles, openKey: originalOpenDialogKey }
+     );
 
     await page.locator("#choose-markdown-btn").click();
-    // Wait for list to be populated before proceeding
-    await playwrightExpect(page.locator("#file-list .file-item")).toHaveCount(
-      mockFiles.length
-    );
+    await playwrightExpect(page.locator("#file-list .file-item")).toHaveCount(mockFiles.length);
     // --- End Setup ---
 
-    // Now proceed with the rename logic
+    // Test logic remains the same...
     const firstFileItem = page.locator("#file-list .file-item").first();
-    // Use the actual original name from the mock setup
     const originalName = "file1-for-rename.md";
     const customName = "My Custom File.md";
     const customNameWithoutExt = "Another Name";
     const customNameWithWrongExt = "Some File.txt";
 
-    // --- Test 1: Basic Rename ---
-    // Click the edit button on the first file
+    // Test 1: Basic Rename
     await firstFileItem.locator(".edit-name-btn").click();
-
-    // Check if the edit container is visible
-    await playwrightExpect(
-      firstFileItem.locator(".file-edit-container")
-    ).toBeVisible();
-    const nameInput = firstFileItem.locator(
-      ".file-edit-container input[type='text']"
-    );
+    const nameInput = firstFileItem.locator(".file-edit-container input[type='text']");
     await playwrightExpect(nameInput).toBeVisible();
-    await playwrightExpect(nameInput).toHaveValue(originalName); // Should default to original
-
-    // Fill in the custom name and save
+    await playwrightExpect(nameInput).toHaveValue(originalName);
     await nameInput.fill(customName);
     await firstFileItem.locator("button:text('Save')").click();
+    await playwrightExpect(firstFileItem.locator(".file-item-info")).toContainText(`${originalName} → ${customName}`);
+    await playwrightExpect(firstFileItem.locator(".file-edit-container")).toBeHidden();
 
-    // Verify the UI updates to show both names
-    await playwrightExpect(
-      firstFileItem.locator(".file-item-info")
-    ).toContainText(`${originalName} → ${customName}`);
-    // Verify the edit container is hidden
-    await playwrightExpect(
-      firstFileItem.locator(".file-edit-container")
-    ).toBeHidden();
-
-    // --- Test 2: Rename back to original (should remove custom name) ---
+    // Test 2: Rename back to original
     await firstFileItem.locator(".edit-name-btn").click();
-    // Use the correct original name variable here too
     await nameInput.fill(originalName);
     await firstFileItem.locator("button:text('Save')").click();
-    // Check that only the original name is displayed
-    await playwrightExpect(
-      firstFileItem.locator(".file-item-info")
-    // Use exact text match if possible, or ensure it doesn't contain the arrow + custom name anymore
-    ).toHaveText(originalName); // Using toHaveText for a more exact match
-    // Ensure it doesn't show the arrow anymore
-    await playwrightExpect(
-      firstFileItem.locator(".file-item-info")
-    ).not.toContainText("→");
+    await playwrightExpect(firstFileItem.locator(".file-item-info")).toHaveText(originalName);
+    await playwrightExpect(firstFileItem.locator(".file-item-info")).not.toContainText("→");
 
-    // --- Test 3: Add .md extension if missing ---
+    // Test 3: Add .md extension
     await firstFileItem.locator(".edit-name-btn").click();
     await nameInput.fill(customNameWithoutExt);
     await firstFileItem.locator("button:text('Save')").click();
-    // Verify .md was added
-    await playwrightExpect(
-      firstFileItem.locator(".file-item-info")
-    ).toContainText(`${originalName} → ${customNameWithoutExt}.md`);
+    await playwrightExpect(firstFileItem.locator(".file-item-info")).toContainText(`${originalName} → ${customNameWithoutExt}.md`);
 
-    // --- Test 4: Replace incorrect extension with .md ---
+    // Test 4: Replace incorrect extension
     await firstFileItem.locator(".edit-name-btn").click();
     await nameInput.fill(customNameWithWrongExt);
-    // Check the warning message appears
-    await playwrightExpect(
-      firstFileItem.locator(".extension-warning")
-    ).toBeVisible();
+    await playwrightExpect(firstFileItem.locator(".extension-warning")).toBeVisible();
     await firstFileItem.locator("button:text('Save')").click();
-    // Verify .txt was replaced with .md
-    await playwrightExpect(
-      firstFileItem.locator(".file-item-info")
-    ).toContainText(
-      `${originalName} → ${customNameWithWrongExt.replace(".txt", ".md")}`
-    );
+    await playwrightExpect(firstFileItem.locator(".file-item-info")).toContainText(`${originalName} → ${customNameWithWrongExt.replace(".txt", ".md")}`);
 
-    // Reset for subsequent tests if needed (optional)
+    // Reset (optional)
     await firstFileItem.locator(".edit-name-btn").click();
-    // Use the correct original name variable here too
     await nameInput.fill(originalName);
     await firstFileItem.locator("button:text('Save')").click();
-    // Verify it's reset
     await playwrightExpect(firstFileItem.locator('.file-item-info')).toHaveText(originalName);
 
-    // --- Cleanup: Restore dialog ---
-    await electronApp.evaluate(async ({ dialog }) => {
-      if (dialog._originalShowOpenDialog) {
-        dialog.showOpenDialog = dialog._originalShowOpenDialog;
-        dialog._originalShowOpenDialog = undefined; // Use undefined instead of delete
-      }
-    });
-  }, 30000); // Increased timeout for this specific test to 30s
+    // Cleanup happens in afterEach
+  }, 30000); // Increased timeout
 
   it("should select markdown files and update the UI", async () => {
     const mockFiles = ["/path/to/file1.md", "/path/to/another/file2.md"];
 
-    // Mock the 'choose-markdown' IPC invoke call from the renderer
-    await page.exposeFunction("mockChooseMarkdown", () => mockFiles);
-    await page.evaluate(() => {
-      const originalInvoke = window.require("electron").ipcRenderer.invoke;
-      window.require("electron").ipcRenderer.invoke = async (
-        channel,
-        ...args
-      ) => {
-        if (channel === "choose-markdown") {
-          console.log(`IPC Intercepted: ${channel}, returning mock files.`);
-          return window.mockChooseMarkdown();
-        }
-        // Ensure other IPC calls still work if needed
-        console.log(`IPC Passthrough: ${channel}`);
-        return originalInvoke(channel, ...args);
-      };
-      // Attach a flag to indicate mocking is active
-      window.ipcMarkdownMocked = true;
-    });
+     // Mock dialog
+     await electronApp.evaluate(
+        ({ dialog }, { filePaths, openKey }) => {
+            dialog.showOpenDialog = async (win, options) => {
+                if (options?.properties?.includes("openFile")) {
+                     console.log("[Main Process Mock] Select Files Test: showOpenDialog mocked.");
+                    return { canceled: false, filePaths };
+                }
+                 // Fallback to original if stored
+                 return typeof dialog[openKey] === 'function' ? dialog[openKey](win, options) : { canceled: true, filePaths: [] };
+            };
+        }, { filePaths: mockFiles, openKey: originalOpenDialogKey }
+     );
 
-    // Click the 'Choose Files' button
     await page.locator("#choose-markdown-btn").click();
 
-    // Wait for potential async updates and check UI elements
-    // Check the input field text
-    await playwrightExpect(page.locator("#markdown-files")).toHaveValue(
-      `${mockFiles.length} file(s) selected`
-    );
-
-    // Check the file list for the correct number of items
-    await playwrightExpect(page.locator("#file-list .file-item")).toHaveCount(
-      mockFiles.length
-    );
-
-    // Check the content of the first file item
-    await playwrightExpect(
-      page.locator("#file-list .file-item").first()
-    ).toContainText("file1.md");
-    // Check the content of the second file item
-    await playwrightExpect(
-      page.locator("#file-list .file-item").nth(1)
-    ).toContainText("file2.md");
-
-    // Check that the create button is enabled
+    // Assertions
+    await playwrightExpect(page.locator("#markdown-files")).toHaveValue(`${mockFiles.length} file(s) selected`);
+    await playwrightExpect(page.locator("#file-list .file-item")).toHaveCount(mockFiles.length);
+    await playwrightExpect(page.locator("#file-list .file-item").first()).toContainText("file1.md");
+    await playwrightExpect(page.locator("#file-list .file-item").nth(1)).toContainText("file2.md");
     await playwrightExpect(page.locator("#create-symlinks-btn")).toBeEnabled();
+    // Cleanup happens in afterEach
   });
 
-  // Add more tests:
-  // - Inputting custom names and checking the UI
-  // - Clicking 'Create Symlinks', mocking the IPC, checking results UI
-  // - Testing recent links loading and clearing
+  it("should create symlinks and display results (mocked)", async () => {
+    const vaultPath = "/test/vault/for-symlinks";
+    const mockFilesToSelect = [
+        { path: "/source/fileA.md", originalName: "fileA.md" },
+        { path: "/source/fileB.md", originalName: "fileB.md", customName: "CustomB.md" },
+        { path: "/source/fileC.md", originalName: "fileC.md" },
+    ];
+    const mockSymlinkResults = [
+        { success: true, file: "fileA.md", targetPath: mockFilesToSelect[0].path, symlinkPath: path.join(vaultPath, "fileA.md")},
+        { success: true, file: "CustomB.md", targetPath: mockFilesToSelect[1].path, symlinkPath: path.join(vaultPath, "CustomB.md")},
+        { success: false, file: "fileC.md", error: "Permission denied"},
+    ];
+
+    // --- Setup 1: Select a vault path (Mocking Dialogs) ---
+    await electronApp.evaluate(
+      ({ dialog }, { path, openKey, msgBoxKey }) => {
+        // Mock both needed dialogs
+        dialog.showOpenDialog = async (win, options) => {
+          if (options?.properties?.includes("openDirectory")) {
+            console.log("[Main Process Mock] Create Test: showOpenDialog (vault) mocked.");
+            return { canceled: false, filePaths: [path] };
+          }
+          // Fallback to original if stored
+          return typeof dialog[openKey] === 'function' ? dialog[openKey](win, options) : { canceled: true, filePaths: [] };
+        };
+         dialog.showMessageBox = async () => {
+             console.log("[Main Process Mock] Create Test: showMessageBox mocked.");
+             return { response: 0 };
+         };
+      }, { path: vaultPath, openKey: originalOpenDialogKey, msgBoxKey: originalMessageBoxKey });
+
+    await page.locator("#choose-vault-btn").click();
+    await playwrightExpect(page.locator("#vault-path")).toHaveValue(vaultPath);
+
+    // --- Setup 2: Select files (Mocking Dialog) ---
+     await electronApp.evaluate(
+      ({ dialog }, { filePaths, openKey }) => {
+        // Overwrite showOpenDialog again, specific for file selection
+        dialog.showOpenDialog = async (win, options) => {
+            if (options?.properties?.includes("openFile")) {
+                console.log("[Main Process Mock] Create Test: showOpenDialog (file) mocked.");
+                return { canceled: false, filePaths };
+            }
+             // Fallback to original if stored
+            return typeof dialog[openKey] === 'function' ? dialog[openKey](win, options) : { canceled: true, filePaths: [] };
+        };
+        // showMessageBox should still be mocked from previous step in this test scope if needed,
+        // but restore in afterEach will reset it.
+      }, { filePaths: mockFilesToSelect.map(f => f.path), openKey: originalOpenDialogKey });
+
+    await page.locator("#choose-markdown-btn").click();
+    await playwrightExpect(page.locator("#file-list .file-item")).toHaveCount(mockFilesToSelect.length);
+
+    // --- Setup 3: Set custom name for fileB via UI ---
+    const fileBItem = page.locator("#file-list .file-item").nth(1);
+    await fileBItem.locator(".edit-name-btn").click();
+    await fileBItem.locator(".file-edit-container input[type='text']").fill(mockFilesToSelect[1].customName);
+    await fileBItem.locator("button:text('Save')").click();
+    await playwrightExpect(fileBItem.locator(".file-item-info")).toContainText(`fileB.md → ${mockFilesToSelect[1].customName}`);
+
+    await playwrightExpect(page.locator("#create-symlinks-btn")).toBeEnabled();
+
+    // --- Mock the core create-symlink IPC handler ---
+     await electronApp.evaluate(
+        async ({ ipcMain }, { results }) => {
+             ipcMain.removeHandler('create-symlink'); // Ensure clean state
+             ipcMain.handle('create-symlink', async () => {
+                 console.log('[Main Process Mock] IPC create-symlink returning mock results.');
+                 return results;
+             });
+        }, { results: mockSymlinkResults }
+     );
+
+    // --- Action: Click the Create Symlinks button ---
+    await page.locator("#create-symlinks-btn").click();
+
+    // --- Assertions ---
+    await playwrightExpect(page.locator("#results .result-item")).toHaveCount(mockSymlinkResults.length);
+
+    const firstResult = page.locator("#results .result-item").first();
+    await playwrightExpect(firstResult).toHaveClass(/success/);
+    await playwrightExpect(firstResult).toContainText("fileA.md");
+    await playwrightExpect(firstResult).toContainText(`Successfully linked to ${mockFilesToSelect[0].path}`);
+
+    const secondResult = page.locator("#results .result-item").nth(1);
+    await playwrightExpect(secondResult).toHaveClass(/success/);
+    await playwrightExpect(secondResult).toContainText("CustomB.md");
+    await playwrightExpect(secondResult).toContainText(`Successfully linked to ${mockFilesToSelect[1].path}`);
+
+    const thirdResult = page.locator("#results .result-item").nth(2);
+    await playwrightExpect(thirdResult).toHaveClass(/error/);
+    await playwrightExpect(thirdResult).toContainText("fileC.md");
+    await playwrightExpect(thirdResult).toContainText("Error: Permission denied");
+
+    await playwrightExpect(page.locator("#markdown-files")).toHaveValue("");
+    await playwrightExpect(page.locator("#file-list .file-item")).toHaveCount(0);
+    await playwrightExpect(page.locator("#create-symlinks-btn")).toBeDisabled();
+
+    // Cleanup happens in afterEach
+  }, 30000); // Increased timeout
+
 });
