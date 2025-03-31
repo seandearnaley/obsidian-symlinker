@@ -3,9 +3,22 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	test: {
 		globals: true,
+		// Default to node, but individual tests can override with @vitest-environment jsdom
 		environment: "node",
 		include: ["**/*.test.js", "**/*.test.mjs"],
 		exclude: ["node_modules/**", "dist/**"],
+		// Increase timeouts for coverage tests
+		testTimeout: 20000,
+		// Configure JSDOM environment where needed
+		environmentOptions: {
+			jsdom: {
+				resources: 'usable',
+			},
+		},
+		// For renderer-direct.test.mjs
+		environmentMatchGlobs: [
+			['**/renderer-direct.test.mjs', 'jsdom'],
+		],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "html"],

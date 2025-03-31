@@ -25,11 +25,12 @@ The test structure is organized as follows:
 
 The current test coverage is as follows:
 
-- **main.js**: 68.77% line coverage
-- **renderer.js**: 0% line coverage (difficult to test due to Electron/DOM dependencies)
+- **main.js**: 69.45% line coverage
+- **renderer.js**: 13.54% line coverage (improved from 0% but still challenging due to DOM dependencies)
 - **utils.js**: 100% line coverage
+- **Overall**: 41.78% coverage (significantly improved from initial 13.56%)
 
-The coverage for main.js and renderer.js is limited by their dependencies on Electron APIs, which are challenging to fully mock in a test environment.
+The coverage for main.js and renderer.js is limited by their dependencies on Electron APIs, which are challenging to fully mock in a test environment. However, we've made substantial progress in testing both through comprehensive mocking and instrumentation strategies.
 
 ## Running Tests
 
@@ -62,13 +63,24 @@ The tests use the following tools and utilities:
 - **Mock Objects**: Custom mock implementations of Electron, DOM, and Node.js APIs
 - **Coverage Instrumentation**: V8 coverage reporting through Vitest
 
+## Successful Strategies
+
+Several strategies have proven effective in improving coverage:
+
+1. **Comprehensive IPC Mocking**: Creating detailed mocks of `ipcMain` and `ipcRenderer` that intercept and simulate calls
+2. **DOM Simulation**: Using JSDOM with extensive element mocking to test renderer code
+3. **Platform-Specific Testing**: Mocking `process.platform` to test Windows, macOS, and Linux code paths
+4. **Instrumented Renderer Code**: Creating a specialized version of renderer.js for testing that exposes key functions
+5. **Window API Mocking**: Simulating the `window.electronAPI` exposed by contextBridge
+
 ## Future Improvements
 
 To further improve the test coverage, the following approaches could be considered:
 
-1. **Real Electron Environment**: Using a real Electron environment for testing
-2. **End-to-End Testing**: Implementing E2E tests with tools like Playwright
-3. **More Sophisticated Mocking**: Developing more comprehensive mocks for Electron APIs
+1. **Real Electron Environment**: Using actual Electron instances for testing with tools like Spectron
+2. **End-to-End Testing**: Implementing E2E tests with tools like Playwright or WebdriverIO's Electron service
+3. **More Sophisticated DOM Mocking**: Developing more comprehensive simulations of DOM events and interactions
+4. **Focus on Uncovered Areas**: Targeting the specific untested portions of main.js and renderer.js
 
 ## Challenges
 

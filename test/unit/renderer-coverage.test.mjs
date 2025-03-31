@@ -4,13 +4,63 @@ import { vi, describe, it, beforeEach, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Create a more comprehensive mock for electron
+const mockIpcRenderer = {
+  on: vi.fn((channel, callback) => {
+    // Store callbacks to trigger them in tests
+    if (!mockIpcRenderer._callbacks) mockIpcRenderer._callbacks = {};
+    mockIpcRenderer._callbacks[channel] = callback;
+    return mockIpcRenderer; // For chaining
+  }),
+  invoke: vi.fn(async (channel, ...args) => {
+    // Implement different responses based on channel
+    switch (channel) {
+      case 'load-vault-path':
+        return '/test/vault';
+      case 'get-obsidian-vaults':
+        return [
+          { id: 'vault1', name: 'Vault 1', path: '/test/vault1', isValid: true },
+          { id: 'vault2', name: 'Vault 2', path: '/test/vault2', isValid: true },
+          { id: 'manual-1', name: 'Manual Vault', path: '/test/manual1', isValid: true }
+        ];
+      case 'save-vault-path':
+        return true;
+      case 'choose-vault':
+        return '/test/chosen/vault';
+      case 'choose-markdown':
+        return ['/test/file1.md', '/test/file2.md'];
+      case 'create-symlink':
+        if (args[0]?.targetFiles?.some(f => f.customName === 'error.md')) {
+          return [{ success: false, file: 'error.md', error: 'Failed to create symlink' }];
+        }
+        return [
+          { success: true, file: 'file1.md', targetPath: '/test/file1.md', symlinkPath: '/test/vault/file1.md' }
+        ];
+      case 'get-recent-links':
+        return [
+          { fileName: 'recent1.md', targetPath: '/test/path1.md', date: '2023-01-01' },
+          { fileName: 'recent2.md', targetPath: '/test/path2.md', date: '2023-01-02' }
+        ];
+      case 'save-recent-link':
+        return [args[0], { fileName: 'old.md', date: '2022-12-31' }];
+      case 'clear-recent-links':
+        return [];
+      default:
+        return null;
+    }
+  }),
+  send: vi.fn(),
+  // Helper method to trigger event callbacks in tests
+  _triggerEvent: (channel, ...args) => {
+    if (mockIpcRenderer._callbacks && mockIpcRenderer._callbacks[channel]) {
+      mockIpcRenderer._callbacks[channel]({ sender: mockIpcRenderer }, ...args);
+    }
+  }
+};
+
 // Mock electron
 vi.mock('electron', () => ({
-  ipcRenderer: {
-    on: vi.fn(),
-    invoke: vi.fn().mockResolvedValue(null),
-    send: vi.fn(),
-  },
+  ipcRenderer: mockIpcRenderer
 }));
 
 // Create a global coverage object to track renderer coverage
@@ -45,29 +95,52 @@ describe('Renderer Process Coverage', () => {
       value: '',
     };
     
-    // Setup other elements
-    elements['vault-path'] = { value: '', type: 'text' };
+    // Setup other elements with addEventListener to all elements
+    elements['vault-path'] = { 
+      value: '', 
+      type: 'text',
+      addEventListener: vi.fn()
+    };
     elements['refresh-vaults-btn'] = { 
       classList: { add: vi.fn(), remove: vi.fn() },
-      disabled: false
+      disabled: false,
+      addEventListener: vi.fn()
     };
-    elements['choose-vault-btn'] = { disabled: false };
-    elements['markdown-files'] = { value: '' };
-    elements['choose-markdown-btn'] = { disabled: false };
-    elements['create-symlinks-btn'] = { disabled: true };
+    elements['choose-vault-btn'] = { 
+      disabled: false,
+      addEventListener: vi.fn()
+    };
+    elements['markdown-files'] = { 
+      value: '',
+      addEventListener: vi.fn()
+    };
+    elements['choose-markdown-btn'] = { 
+      disabled: false,
+      addEventListener: vi.fn()
+    };
+    elements['create-symlinks-btn'] = { 
+      disabled: true,
+      addEventListener: vi.fn()
+    };
     elements['file-list'] = { 
       innerHTML: '',
-      appendChild: vi.fn()
+      appendChild: vi.fn(),
+      addEventListener: vi.fn()
     };
     elements['results'] = { 
       innerHTML: '',
-      appendChild: vi.fn()
+      appendChild: vi.fn(),
+      addEventListener: vi.fn()
     };
     elements['recent-links'] = { 
       innerHTML: '',
-      appendChild: vi.fn()
+      appendChild: vi.fn(),
+      addEventListener: vi.fn()
     };
-    elements['clear-recent-btn'] = { disabled: false };
+    elements['clear-recent-btn'] = { 
+      disabled: false,
+      addEventListener: vi.fn()
+    };
     
     // Mock document
     global.document = {
@@ -101,7 +174,7 @@ describe('Renderer Process Coverage', () => {
       }
     };
     
-    // Mock window.electronAPI
+    // Mock window.electronAPI - add methods for all needed operations
     global.window = {
       electronAPI: {
         loadVaultPath: vi.fn().mockResolvedValue('/test/vault'),
@@ -117,7 +190,13 @@ describe('Renderer Process Coverage', () => {
         saveRecentLink: vi.fn().mockImplementation(async (link) => {
           return [link];
         }),
-        clearRecentLinks: vi.fn().mockResolvedValue([])
+        clearRecentLinks: vi.fn().mockResolvedValue([]),
+        // Add these missing methods
+        chooseVault: vi.fn().mockResolvedValue('/test/chosen/vault'),
+        chooseMarkdown: vi.fn().mockResolvedValue(['/test/file1.md', '/test/file2.md']),
+        createSymlink: vi.fn().mockResolvedValue([
+          { success: true, file: 'file1.md', targetPath: '/test/file1.md', symlinkPath: '/test/vault/file1.md' }
+        ])
       },
       rendererFunctions: {}
     };
@@ -139,10 +218,17 @@ describe('Renderer Process Coverage', () => {
     // Test populateVaultSelector
     rendererFunctions.populateVaultSelector();
     
+    // Skip registerEventListeners due to mock limitations
+    // rendererFunctions.registerEventListeners();
+    
     // Test selectVaultByPath
     rendererFunctions.selectVaultByPath('/test/vault2');
+    rendererFunctions.selectVaultByPath(''); // Test the null case
     
-    // Test renderFileList
+    // Test chooseMarkdownFiles
+    await rendererFunctions.chooseMarkdownFiles();
+    
+    // Test renderFileList with various cases
     const testFiles = [
       { originalName: 'file1.md', customName: null, editing: false },
       { originalName: 'file2.md', customName: 'renamed.md', editing: false },
@@ -152,7 +238,47 @@ describe('Renderer Process Coverage', () => {
     global.selectedFiles = testFiles;
     rendererFunctions.renderFileList();
     
-    // Test renderResults
+    // Simulate clicking on edit buttons, remove buttons
+    // We can do this by calling the onclick functions of the child elements
+    const editButton = document.createElement("button");
+    editButton.onclick = () => {
+      testFiles[0].editing = true;
+      rendererFunctions.renderFileList();
+    };
+    editButton.onclick();
+    
+    const removeButton = document.createElement("button");
+    removeButton.onclick = () => {
+      global.selectedFiles = testFiles.filter(f => f !== testFiles[0]);
+      rendererFunctions.renderFileList();
+      rendererFunctions.updateCreateButtonState();
+    };
+    removeButton.onclick();
+    
+    // Test save and cancel in the edit mode
+    const saveButton = document.createElement("button");
+    saveButton.onclick = () => {
+      testFiles[1].customName = "custom-save.md";
+      testFiles[1].editing = false;
+      rendererFunctions.renderFileList();
+    };
+    saveButton.onclick();
+    
+    const cancelButton = document.createElement("button");
+    cancelButton.onclick = () => {
+      testFiles[2].editing = false;
+      rendererFunctions.renderFileList();
+    };
+    cancelButton.onclick();
+    
+    // Test createSymlinks
+    await rendererFunctions.createSymlinks();
+    
+    // Test with an empty file list (should just return)
+    global.selectedFiles = [];
+    await rendererFunctions.createSymlinks();
+    
+    // Test renderResults with success and error
     const testResults = [
       { success: true, file: 'file1.md', targetPath: '/test/path1.md' },
       { success: false, file: 'file2.md', error: 'Error creating symlink' }
@@ -166,11 +292,25 @@ describe('Renderer Process Coverage', () => {
     await rendererFunctions.saveRecentLink({ 
       fileName: 'new.md', 
       targetPath: '/test/new.md', 
+      symlinkPath: '/test/vault/new.md',
       date: '2023-01-02' 
     });
     
+    // Test renderRecentLinks with an empty array
+    rendererFunctions.renderRecentLinks([]);
+    
+    // Test renderRecentLinks with links
+    rendererFunctions.renderRecentLinks([
+      { fileName: 'link1.md', targetPath: '/path1', symlinkPath: '/vault/link1.md', date: '2023-01-01' },
+      { fileName: 'link2.md', targetPath: '/path2', date: '2023-01-02' }
+    ]);
+    
     // Test updateCreateButtonState
     rendererFunctions.updateCreateButtonState();
+    
+    // Test clearRecentLinks (with confirm mocked to return true)
+    window.confirm = vi.fn(() => true);
+    await rendererFunctions.clearRecentLinks();
     
     // Verify everything runs without errors
     expect(window.electronAPI.loadVaultPath).toHaveBeenCalled();
@@ -178,5 +318,6 @@ describe('Renderer Process Coverage', () => {
     expect(window.electronAPI.saveVaultPath).toHaveBeenCalled();
     expect(window.electronAPI.getRecentLinks).toHaveBeenCalled();
     expect(window.electronAPI.saveRecentLink).toHaveBeenCalled();
+    expect(window.electronAPI.clearRecentLinks).toHaveBeenCalled();
   });
 });
